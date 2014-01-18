@@ -120,6 +120,14 @@
     (subseq *decode-buffer* start (+ num start))))
 
 @export
+(defun grab-octet ()
+  "grab single byte"
+  (let ((start (bit-octet *decode-position*)))
+    (incf *decode-position* 8)
+    (elt *decode-buffer* start)
+  ))
+
+@export
 (defun grab-ethernet-address ()
   (make-ethernet-address :octets (grab-octets 6)))
 
@@ -325,7 +333,8 @@ signalled; if ERRORP is nil then the key itself is returned."
   (source   nil :type (or null ethernet-address))
   (protocol nil :type (or null (unsigned-byte 16) symbol)))
 
-(defparameter *ethernet-protocol-names* '((#x0806 . :arp) (#x0800 . :ipv4))
+(defparameter *ethernet-protocol-names* '((#x0806 . :arp) (#x0800 . :ipv4)
+                                          (0x86DD . :ipv6))
   "Mapping from ethernet protocol numbers to symbolic names.")
 @export
 (defun grab-ethernet-header ()
@@ -826,7 +835,6 @@ SPECS is a list of specifications of what a header should contain."
           (encode (decode *udp-packet*)))))
 
 
-@export
 
 @export
 (defun octet-vector-to-int-2 (v)

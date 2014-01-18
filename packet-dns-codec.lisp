@@ -406,7 +406,7 @@ signalled; if ERRORP is nil then the key itself is returned."
 (defun decode-dns-payload (p)
   (packet:with-buffer-input p
     (let ((hdr (grab-dns-header )))
-      (print hdr)
+      (when *debug* (print hdr))
       (make-dns-packet :header hdr
                        :questions (grab-dns-questions hdr)
                        :answers (grab-dns-answers hdr)
