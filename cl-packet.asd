@@ -23,10 +23,13 @@
                #:lparallel
                #:cl-syslog
                #:flexi-streams
+               #:split-sequence
                )
   :components (
                (:file "package")
                (:file "packet")
+               (:file "packet-ipv6"
+                      :depends-on ("packet"))
                (:file "packet-util")
                (:file "packet-dns-codec")
                (:file "packet-dns-client")

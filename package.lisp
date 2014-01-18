@@ -5,6 +5,8 @@
         :cl-annot
         :cl-annot.class
         )
+  (:import-from :split-sequence :split-sequence)
+  (:import-from :alexandria :emptyp :lastcar)
   ;; Note: exports are defined with cl-addon @export , see source
 )
 (defpackage :packet.util
@@ -69,4 +71,5 @@
         :packet.dns.client
         :packet.analyzer
         )
-    (:shadowing-import-from :cl-syslog.udp :udp-logger :ulog :log))
+  (:shadowing-import-from :cl-syslog.udp :udp-logger :ulog :log)
+  )
