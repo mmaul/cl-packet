@@ -5,6 +5,8 @@
   (setf lparallel:*kernel* (lparallel:make-kernel 4)))
 (udp-logger "127.0.0.1")
 
+(defun fmap (fns v) "Apply list of fns to value v"
+  (mapcar (lambda (f) (funcall f v))fns))
 
 @export
 (defun analyze (intf filt analyzer &key (secs nil) (nbio nil) (timeout 5)
