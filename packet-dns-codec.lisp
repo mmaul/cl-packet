@@ -70,7 +70,11 @@
     (15 . MX)    ;mail exchange
     (16 . TXT)   ;text strings
     (28 . AAAA)  ;AAAA record
+    (33 . SRV)
+    (41 . EDNS0)
+    (43 . DS)
     (46 . RRSIG)   ;text strings
+    (48 . DNSKEY)   ;text strings
     ( 252 . AXFR) ; A request for a transfer of an entire zone
     ( 253 . MAILB) ;A request for mailbox-related records (MB, MG or MR)
     ( 254 . MAILA) ;A request for mail agent RRs (Obsolete - see MX)
@@ -146,7 +150,10 @@
 (defstruct (dns-packet (:conc-name #:dns-packet.))
   (header nil :type (or nil dns-header))
   (questions nil :type list)
-  (answers nil :type list))
+  (answers nil :type list)
+  (authorities nil :type list)
+  (additionals nil :type list)
+  )
 
 @export
 (defun grab-label ()
@@ -311,7 +318,7 @@ signalled; if ERRORP is nil then the key itself is returned."
   )
 @export
 (defun grab-dns-answers (hdr &key times)
-  (when *debug* (print "------------- (grab-dns-answers) ------------"))
+  (when *debug* (print (list  "------------- (grab-dns-answers) ------------" times)))
   (labels (
     (grab-dns-answer (n) 
       (if (> n 0)
@@ -330,6 +337,20 @@ signalled; if ERRORP is nil then the key itself is returned."
                                     ('a (make-ipv4-address :octets (grab-octets rdlength)))
                                     ('cname (grab-domain-name))
                                     ('aaaa (ipv6-octets-to-string (grab-octets rdlength)))
+                                    ('mx (format nil "~d ~a" (octet-vector-to-int-2 (grab-octets 2)) (grab-domain-name)))
+                                    ('ns (grab-domain-name))
+                                    ('ptr (grab-domain-name))
+                                    ; SOA: mname  cname serial refresh retry
+                                    ;      expire min
+                                    ('soa (format nil "~a ~a ~a ~a ~a ~a ~a"
+                                                  (grab-domain-name) (grab-domain-name)
+                                                  (octet-vector-to-int-4  (grab-octets 4))
+                                                  (octet-vector-to-int-4  (grab-octets 4))
+                                                  (octet-vector-to-int-4  (grab-octets 4))
+                                                  (octet-vector-to-int-4  (grab-octets 4))
+                                                  (octet-vector-to-int-4  (grab-octets 4))
+                                                  ))
+                                    ('txt (format nil "\"~a\"" (FLEXI-STREAMS:OCTETS-TO-STRING (grab-octets rdlength) :start 0 :end rdlength)))
                                     (otherwise (grab-octets rdlength))
                                     )
                        )
@@ -393,10 +414,17 @@ signalled; if ERRORP is nil then the key itself is returned."
              (= (udp-header.dest-port l4 ) 53))
           (progn  
             (packet:with-buffer-input (elt dec 3)
-                 (let ((hdr (grab-dns-header )))
+               (let ((hdr (grab-dns-header )))
+                   (format t "NSCOUNT ~A~%" (dns-header.nscount/upcount hdr))                         
                    (list l3 l4 (make-dns-packet :header hdr
                                                 :questions (grab-dns-questions hdr)
                                                 :answers (grab-dns-answers hdr)
+                                                :authorities (grab-dns-answers hdr
+                                                 :times
+                                                 (dns-header.nscount/upcount hdr))
+                                                :additionals (grab-dns-answers hdr
+                                                 :times
+                                                 (dns-header.arcount hdr))
                                                 ))
                    )))
         nil
@@ -410,6 +438,12 @@ signalled; if ERRORP is nil then the key itself is returned."
       (make-dns-packet :header hdr
                        :questions (grab-dns-questions hdr)
                        :answers (grab-dns-answers hdr)
+                       :authorities (grab-dns-answers hdr
+                          :times
+                          (dns-header.nscount/upcount hdr))
+                       :additionals (grab-dns-answers hdr
+                                                 :times
+                                                 (dns-header.arcount hdr))
                        )
       ) )
   )

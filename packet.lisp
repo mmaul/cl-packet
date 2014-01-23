@@ -59,12 +59,15 @@
   "A decoded protocol header."
   '(or ethernet-header arp-header ipv4-header udp-header))
 
+(defparameter *debug* nil)
+
 ;;; The `decode' and `encode' functions convert between the buffer and
 ;;; packet representations. They are inverse operations when applied
 ;;; to well-formed inputs.
 ;;;
 (declaim (ftype (function (buffer) packet) decode)
          (ftype (function (packet) buffer) encode))
+(defparameter *enforce-checksum* nil)
 @export
 (defun decode (buffer)
   "Decode BUFFER as a packet."
@@ -334,7 +337,7 @@ signalled; if ERRORP is nil then the key itself is returned."
   (protocol nil :type (or null (unsigned-byte 16) symbol)))
 
 (defparameter *ethernet-protocol-names* '((#x0806 . :arp) (#x0800 . :ipv4)
-                                          (0x86DD . :ipv6))
+                                          (#x86dd . :ipv6))
   "Mapping from ethernet protocol numbers to symbolic names.")
 @export
 (defun grab-ethernet-header ()
@@ -489,7 +492,7 @@ signalled; if ERRORP is nil then the key itself is returned."
       (header 'fragment-offset (grab-bits 13))
       (header 'ttl             (grab-bits 8))
       (header 'protocol        (if *resolve-protocols*
-                                   (ipv4-protocol (grab-bits 8))
+                                   (get-protocol (grab-bits 8))
                                  (grab-bits 8)))
       (header 'checksum        (setf checksum (grab-bits 16)))
       (header 'source          (grab-ipv4-address))
@@ -505,10 +508,10 @@ signalled; if ERRORP is nil then the key itself is returned."
                         :length header-octets
                         :initial initial)))
         (unless (eql checksum computed-checksum)
-          (error "Bad checksum: Got ~D, computed ~D."
+          (error "bad checksum: Got ~D, computed ~D."
                  checksum computed-checksum))))
     struct))
-
+#||
 (defvar ipv4-protocol-names '((1 . :icmp) (6 . :tcp) (17 . :udp))
   "Mapping between IPv4 protocol numbers and their symbolic names.")
 
@@ -516,6 +519,32 @@ signalled; if ERRORP is nil then the key itself is returned."
   "Return the symbolic name for protocol NUMBER, if appropriate."
   (if *resolve-protocols*
       (lookup number ipv4-protocol-names :errorp nil)
+      number))
+||#
+
+(defconstant protocol-names
+  '(
+    (0 .  :hop-by-hops-options)
+    (1 .  :icmp)
+    (6 .  :tcp)
+    (17 . :udp)
+    (41 . :encapsulated-ipv6)
+    (43 . :routing)
+    (44 . :fragment)
+    (46 . :rrp)
+    (50 . :esp)
+    (51 . :authentication)
+    (58 . :icmpv6)
+    (59 . :no-next)
+    (60 . :destination-options)
+ )
+  )
+
+@export
+(defun get-protocol (number)
+  "Return the symbolic name for protocol NUMBER, if appropriate."
+  (if *resolve-protocols*
+      (lookup number protocol-names :errorp nil)
       number))
 
 (defconstant ipv4-no-options-hlen 5)
@@ -538,7 +567,7 @@ The length and checksum fields are computed automatically."
       (shove-bits flags 3)
       (shove-bits fragment-offset 13)
       (shove-bits ttl 8)
-      (shove-bits (rlookup protocol ipv4-protocol-names) 8)
+      (shove-bits (rlookup protocol protocol-names) 8)
       ;; Remember where the checksum is: we have to come back and
       ;; patch it in.
       (setf checksum-pos (encoding-position))
@@ -578,7 +607,7 @@ the IPv4 header are supplied."
       (header 'dest-port (grab-bits 16))
       (header 'length    (setf length (grab-bits 16)))
       (header 'checksum  (setf checksum (grab-bits 16)))
-      (when (and src-ip dest-ip)
+      (when (and src-ip dest-ip (eq (type-of src-ip) 'ipv4-address))
         (unless (zerop checksum)        ; checksum is optional
           (let* ((init (- (udp-pseudo-header-checksum-acc
                            src-ip dest-ip length)
@@ -587,7 +616,7 @@ the IPv4 header are supplied."
                                               :position header-start
                                               :length length
                                               :initial init)))
-            (unless (eql checksum computed-checksum)
+            (when (and *enforce-checksum* (eql checksum computed-checksum))
               (error "Bad checksum: Got ~D, computed ~D."
                      checksum computed-checksum))))))
     struct))
@@ -595,7 +624,7 @@ the IPv4 header are supplied."
 (defun udp-pseudo-header-checksum-acc (src-ip dest-ip udp-length)
   (+ (checksum-acc-ipv4-address src-ip)
      (checksum-acc-ipv4-address dest-ip)
-     (lookup :udp ipv4-protocol-names :reversep t)
+     (lookup :udp protocol-names :reversep t)
      udp-length))
 
 @export
@@ -678,9 +707,10 @@ protocol's header.")
 @export
 (defun grab-more-headers (header)
   "Accumulate HEADER and continue decoding the rest."
-  (if (member (type-of header) '(ethernet-header ipv4-header))
+  
+  (if (member (type-of header) '(ethernet-header ipv4-header ipv6-header))
       (let ((*previous-header* header)
-            (inner-protocol (slot-value header 'protocol)))
+            (inner-protocol (slot-value header (if (eq (type-of header) 'ipv6-header) 'next-header 'protocol))))
         (cons header (grab-more-headers (grab-header inner-protocol))))
       ;; This is the last header we know how to decode.
       (list header)))
@@ -688,10 +718,12 @@ protocol's header.")
 @export
 (defun grab-header (protocol)
   "Grab and return the header of PROTOCOL."
+  (when *debug*  (format t "GRAB-HEADER PROTOCOL ~a TOP ~a KEYWORD ~a~%" protocol (type-of protocol) (get-protocol protocol)))
   (case protocol
     (:ethernet (grab-ethernet-header))
     (:arp      (grab-arp-header))
     (:ipv4     (grab-ipv4-header))
+    (:ipv6     (grab-ipv6-header))
     (:udp      (let ((src-ip  (slot-value *previous-header* 'source))
                      (dest-ip (slot-value *previous-header* 'dest)))
                  (grab-udp-header src-ip dest-ip)))))
@@ -835,6 +867,7 @@ SPECS is a list of specifications of what a header should contain."
           (encode (decode *udp-packet*)))))
 
 
+@export
 
 @export
 (defun octet-vector-to-int-2 (v)

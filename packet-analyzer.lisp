@@ -3,7 +3,7 @@
 
 (when (not lparallel:*kernel*)
   (setf lparallel:*kernel* (lparallel:make-kernel 4)))
-(udp-logger "127.0.0.1" 514)
+(udp-logger "127.0.0.1")
 
 
 @export
@@ -39,25 +39,69 @@
 @export
 (defun dns-logger-analyzer (queue)
   (loop do
-        (destructuring-bind (eth ipv4 udp payload) (decode (pop-queue queue))
+        (destructuring-bind (eth ip udp payload) (decode (pop-queue queue))
           (let* ((pkt (decode-dns-payload payload))
                  
                  (q (dns-packet.questions pkt))
                  (a (dns-packet.answers pkt))
+                 (n (dns-packet.authorities pkt))
+                 (d (dns-packet.additionals pkt))
                  (h (DNS-PACKET.HEADER pkt)))
             (loop for qp in q do
-                  (ulog (format nil "query[~a] ~a from ~a ~%"
+                  (ulog (format nil "query[~a] ~a ~a ~a from ~a ~%"
                                             (dns-header.id h)
                                             (dns-question.qname qp)
-                                            (ipv4-header.source ipv4))))
+                                            (dns-question.qclass qp)
+                                            (dns-question.qtype qp)
+                                            (if (eq (type-of ip) 'ipv6-header)
+                                                (ipv6-header.source ip) 
+                                              (ipv4-header.source ip)))))
+            
+            (loop for ns in n do
+                  (ulog (format nil "authority[~a] ~a ~a ~a ~a ~a from ~a to ~a~%"
+                                 (dns-header.id h)   (dns-answer.name ns)
+                                 (dns-answer.ttl ns) (dns-answer.class ns)
+                                 (dns-answer.type ns) (dns-answer.rdata ns)
+                                 (if (eq (type-of ip) 'ipv6-header)
+                                                (ipv6-header.source ip) 
+                                   (ipv4-header.source ip))
+                                 (if (eq (type-of ip) 'ipv6-header)
+                                     (ipv6-header.dest ip) 
+                                   (ipv4-header.dest ip))
+                                  ))
+                  )
             (loop for an in a do
                   (ulog (format nil "answer[~a] ~a ~a ~a ~a ~a from ~a to ~a~%"
                                  (dns-header.id h)   (dns-answer.name an)
                                  (dns-answer.ttl an) (dns-answer.class an)
                                  (dns-answer.type an) (dns-answer.rdata an)
-                                 (ipv4-header.dest ipv4) (ipv4-header.source ipv4)))
+                                 (if (eq (type-of ip) 'ipv6-header)
+                                                (ipv6-header.source ip) 
+                                   (ipv4-header.source ip))
+                                 (if (eq (type-of ip) 'ipv6-header)
+                                     (ipv6-header.dest ip) 
+                                   (ipv4-header.dest ip))
+                                  ))
+                  )
+            (loop for ad in d do
+                  (ulog (format nil "additional[~a] ~a ~a ~a ~a ~a from ~a to ~a~%"
+                                 (dns-header.id h)   (dns-answer.name ad)
+                                 (dns-answer.ttl ad) (dns-answer.class ad)
+                                 (dns-answer.type ad) (dns-answer.rdata ad)
+                                 (if (eq (type-of ip) 'ipv6-header)
+                                                (ipv6-header.source ip) 
+                                   (ipv4-header.source ip))
+                                 (if (eq (type-of ip) 'ipv6-header)
+                                     (ipv6-header.dest ip) 
+                                   (ipv4-header.dest ip))
+                                  ))
                   )
             nil))))
+@export
+(defun dns-logger-analyzer1 (queue)
+  (loop do
+        (print (decode (pop-queue queue))
+)))
 
 
 

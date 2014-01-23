@@ -79,38 +79,13 @@
                 (t (setf (aref vector i) (parse-hex-ub16 token)))))
         vector))))
 
-(defconstant next-header-names '(
-                                 (0 .  :hop-by-hops-options)
-                                 (6 .  :tcp)
-                                 (17 . :udp)
-                                 (41 . :encapsulated-ipv6)
-                                 (43 . :routing)
-                                 (44 . :fragment)
-                                 (46 . :rrp)
-                                 (50 . :esp)
-                                 (51 . :authentication)
-                                 (58 . :icmpv6)
-                                 (59 . :no-next)
-                                 (60 . :destination-options)))
 
-@export
-(defun ipv6-next-header (number)
-  "Return the symbolic name for protocol NUMBER, if appropriate."
-  (if *resolve-protocols*
-      (lookup number next-header-names :errorp nil)
-    number))
-
-
-@export-structure
-(defstruct (ipv6-address (:conc-name #:ipv6-address.)
-                         (:print-function print-ipv6-address))
-  (quads 0 :type  (SIMPLE-ARRAY (UNSIGNED-BYTE 16) 8)))
 
 @export
 (defun vector-to-colon-separated (vector &optional (case :downcase))
   "Convert an (SIMPLE-ARRAY (UNSIGNED-BYTE 16) 8) to a colon-separated IPv6
 address. CASE may be :DOWNCASE or :UPCASE."
-  (coercef vector 'ipv6-array)
+  
   (check-type case (member :upcase :downcase) "either :UPCASE or :DOWNCASE")
   (let ((s (make-string-output-stream)))
     (flet ((find-zeros ()
@@ -122,8 +97,7 @@ address. CASE may be :DOWNCASE or :UPCASE."
                          (loop :for i :from start :below end
                                :do (princ (aref vector i) s) (princ #\: s))))
       (cond
-       ((ipv4-on-ipv6-mapped-vector-p vector)
-        (princ-ipv4-on-ipv6-mapped-address vector s))
+       
        (t
         (let ((*print-base* 16) (*print-pretty* nil))
           (when (plusp (aref vector 0)) (princ (aref vector 0) s))
@@ -140,17 +114,24 @@ address. CASE may be :DOWNCASE or :UPCASE."
         (:upcase (nstring-upcase str))))))
 
 
+@export-structure
+(defstruct (ipv6-address (:conc-name #:ipv6-address.)
+                         (:print-function print-ipv6-address))
+  (quads 0 :type  (SIMPLE-ARRAY (UNSIGNED-BYTE 16) 8)))
+
+
 @export
 (defun simple-print-ipv6-address (address stream depth)
   "Print IPv4 addresses as in ^192.168.0.1."
   (declare (ignore depth))
-  (format stream "^~{~X~X~^:~}" (coerce (ipv6-address.octets address) 'list)))
+  (format stream "^~{~X~X~^:~}" (coerce (ipv6-address.quads address) 'list)))
   
 
-
-(defun print-ipv6-address (address stream)
+@export
+(defun print-ipv6-address (address stream depth)
   "Print IPv4 addresses as in ^192.168.0.1."
-  ( format stream "~A" (vector-colon-seperated (ipv6-address.quads  address)))
+  (declare (ignore depth))
+  ( format stream "~A" (vector-to-colon-separated (ipv6-address.quads  address)))
 )
 #||
 From RFC-2460
@@ -230,8 +211,16 @@ RFC 2460                   IPv6 Specification              December 1998
   (let ((num 16)
         (start (bit-octet *decode-position*)))
     (incf *decode-position* (* num 8))
+    
     (make-ipv6-address :quads (subseq *decode-buffer* start (+ num start)))))
 
+@export
+(defun grab-ipv6-address1 ()
+  "Grab a vector of NUM octets."
+  (make-ipv6-address :quads (make-array '(8) :element-type '(unsigned-byte 16)
+                                        :initial-contents (loop for i from 1 to 8 collect (grab-bits 16)))))
+
+  
 
 @export-structure
 (defstruct (ipv6-header (:conc-name #:ipv6-header.))
@@ -242,16 +231,18 @@ RFC 2460                   IPv6 Specification              December 1998
   (next-header              nil :type (or null (unsigned-byte 8)))
   (hop-limit           nil :type (or null (unsigned-byte 8)))
   (source          nil :type (or null ipv6-address))
-  (destination            nil :type (or null ipv6-address)))
+  (dest            nil :type (or null ipv6-address)))
 
+@export
 (defun grab-ipv6-header ()
-                  (make-ipv6-header :version (grab-bits 4)
-                                    :traffic-class (grab-octet)
-                                    :flowlabel (grab-bits 20)
-                                    :next-header (grab-octet)
-                                    :hop-limit (grab-octet)
-                                    :source (grab-ipv6-address)
-                                    :destination (grab-ipv6-address)
+  (make-ipv6-header :version (grab-bits 4)
+                    :traffic-class (dpb (grab-bits 4) (byte 4 4) (grab-bits 4))
+                    :flow-label (grab-bits 20)
+                    :payload-length (octet-vector-to-int-2 (grab-octets 2))
+                    :next-header (get-protocol  (grab-octet))
+                    :hop-limit (grab-octet)
+                    :source (grab-ipv6-address)
+                    :dest (grab-ipv6-address)
                                     )
                   )
 
