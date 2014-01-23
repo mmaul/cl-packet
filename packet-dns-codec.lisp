@@ -323,7 +323,7 @@ signalled; if ERRORP is nil then the key itself is returned."
     (grab-dns-answer (n) 
       (if (> n 0)
           (let* (
-                (domain-name (grab-domain-name))
+                 (domain-name (if (= 0 (elt (stroke-octets 1) 0)) (progn  (bump 1) "") (grab-domain-name)))
                 (rec-type (lookup (octet-vector-to-int-2
                                           (grab-octets 2))
                                          *dns-qtype* :errorp nil) )

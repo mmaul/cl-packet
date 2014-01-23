@@ -121,7 +121,18 @@
   (let ((start (bit-octet *decode-position*)))
     (incf *decode-position* (* num 8))
     (subseq *decode-buffer* start (+ num start))))
-
+;;; "Stroke" functions consume input from `*decode-buffer*' and DO NOT advance
+;;; `*decode-position*'.
+@export
+(defun stroke-octets (num)
+  "Stroke a vector of NUM octets."
+  (let ((start (bit-octet *decode-position*)))
+    
+    (subseq *decode-buffer* start (+ num start))))
+@export
+(defun bump (num)
+  (incf *decode-position* (* num 8))
+  )
 @export
 (defun grab-octet ()
   "grab single byte"
