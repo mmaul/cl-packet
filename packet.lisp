@@ -877,9 +877,6 @@ SPECS is a list of specifications of what a header should contain."
   (time (dotimes (i (expt 10 n))
           (encode (decode *udp-packet*)))))
 
-
-@export
-
 @export
 (defun octet-vector-to-int-2 (v)
   (dpb (elt v 0) (byte 8 8) (elt v 1))

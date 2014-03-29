@@ -16,7 +16,7 @@
   "
   :author "Mike Maul <mike.maul@gmail.com>"
   :license "BSD"
-  :depends-on (#:cls
+  :depends-on (
                #:alexandria
                #:cl-annot
                #:cl-syslog
@@ -43,7 +43,7 @@
   "
   :author "Mike Maul <mike.maul@gmail.com>"
   :license "BSD"
-  :depends-on (#:cls
+  :depends-on (
                #:alexandria
                #:cl-annot
                #:plokami
@@ -52,6 +52,8 @@
                #:cl-syslog
                #:flexi-streams
                #:split-sequence
+	       #:cl-variates
+               #:cl-redis
                #:cl-packet
                )
   :components ((:module "packet-analyzer"

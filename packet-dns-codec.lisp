@@ -74,7 +74,10 @@
     (41 . EDNS0)
     (43 . DS)
     (46 . RRSIG)   ;text strings
+    (47 . NSEC)
     (48 . DNSKEY)   ;text strings
+    (50 . NSEC3)
+    (51 . NSEC3PARAM)
     ( 252 . AXFR) ; A request for a transfer of an entire zone
     ( 253 . MAILB) ;A request for mailbox-related records (MB, MG or MR)
     ( 254 . MAILA) ;A request for mail agent RRs (Obsolete - see MX)
@@ -159,9 +162,8 @@
 (defun grab-label ()
   (let ((l '()) (len  (elt (grab-octets 1) 0)))
     (when *debug* (format t "~%[grab-label ~3d]~%" len))
-    (loop 
-     for i from 0 to (-  len 1) 
-     do
+    (;loop for i from 0 to (-  len 1) 
+     dotimes (i len)
      (let ((p packet::*decode-position*)
            (c (code-char (elt (grab-octets 1) 0))))
        (when *debug* (format t "~4d ~3d ~a~%"  (octet-bit p) (char-code c) c))

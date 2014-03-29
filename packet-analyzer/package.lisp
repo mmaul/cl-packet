@@ -8,6 +8,7 @@
         :lparallel.queue
         :packet
         :packet.dns.codec
+        :redis
         )
   (:shadowing-import-from :cl-syslog.udp :udp-logger :ulog :log)
   (:import-from :flexi-streams :string-to-octets :octets-to-string)
