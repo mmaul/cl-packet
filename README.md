@@ -18,9 +18,10 @@ NOTES
 This library in in now way ready for primetime. However it does provide
 useful functionality. There is currently something wrong with babel on load
 you may get 
+```
 The value #:~A-CODE-POINT-COUNTER is not of the expected type STRING.
    [Condition of type TYPE-ERROR]```
-```
+
 Just select the ACCEPT restart
 
 An example of most of the usage functionalty can be seen in packet-analyzer.lisp
