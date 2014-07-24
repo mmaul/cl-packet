@@ -53,7 +53,8 @@
            (21 .   BADALG)))   ;Algorithm not supported            [RFC 2930]
 
 (defvar *dns-qtype*
-  '( (1 . A)      ;a host address
+  '((0 . SIG-RR) 
+    (1 . A)      ;a host address
     (2 . NS)     ;an authoritative name server
     (3 . MD)     ;a mail destination (Obsolete - use MX)
     (4 . MF)     ;a mail forwarder (Obsolete - use MX)
@@ -69,19 +70,43 @@
     (14 . MINFO) ;mailbox or mail list information
     (15 . MX)    ;mail exchange
     (16 . TXT)   ;text strings
+    (17 . RP)
+    (18 . AFSDB)
+    (25 . SIG)
+    (25 . KEY)
     (28 . AAAA)  ;AAAA record
+    (28 . LOC)
     (33 . SRV)
+    (35 . NAPTR)
+    (36 . KX)
+    (37 . CERT)
+    (38 . A6)
+    (39 . DNAME)
     (41 . EDNS0)
     (43 . DS)
+    (44 . SHFP)
+    (45 . IPSECKEY)
     (46 . RRSIG)   ;text strings
     (47 . NSEC)
     (48 . DNSKEY)   ;text strings
+    (49 .DHCID)
     (50 . NSEC3)
     (51 . NSEC3PARAM)
-    ( 252 . AXFR) ; A request for a transfer of an entire zone
-    ( 253 . MAILB) ;A request for mailbox-related records (MB, MG or MR)
-    ( 254 . MAILA) ;A request for mail agent RRs (Obsolete - see MX)
-    ( 255 . ANY)) ;A request for all records
+    (52 . TLSA)
+    (55 . HIP)
+    (99 . SPF)
+    (249 . TKEY)
+    (250 . TSIG)
+    (251 . IXFR)
+    (252 . AXFR) ; A request for a transfer of an entire zone
+    (253 . MAILB) ;A request for mailbox-related records (MB, MG or MR)
+    (254 . MAILA) ;A request for mail agent RRs (Obsolete - see MX)
+    (255 . ANY) ;A request for all records
+    (257 . CAA)
+    (32768 . TA)
+    
+    ) 
+  
   )
 
 (defvar *dns-class* 
@@ -89,6 +114,8 @@
      (2 . CS);              2 the CSNET class(Obsolete)
      (3 . CH);              3 the CHAOS class
      (4 . HS))) ;           4 Hesiod [Dyer 87]
+
+
 
 (defun lookup-rcode (rc &key ( rr nil))
   (let ((rcf (assoc rc *dns-rcode-fixed*)))
@@ -104,7 +131,22 @@
      (t :err)
      ))
   )
-
+@export
+(defun lookup-record-class (c)
+  (cond 
+    ((= c 0) 'RESERVED)
+    ((= c 1) 'IN)
+    ((= c 2) 'UNASSIGNED)
+    ((= c 3) 'CH)
+    ((= c 4) 'HS)
+    ((and (>= c 5) (<= c 253)) 'UNASSIGNED)
+    ((= c 254) 'QCLASS-NONE)
+    ((= c 255) 'QCLASS-ANY)
+    ((and (>= c 256) (<= c 65279)) 'UNASSIGNED)
+    ((and (>= c 65280) (<= c 65534)) 'RESERVED)
+    ((= c 65535) 'RESERVED)
+    (t 'UNDEFINED)
+    ))
 
 @export
 (defun ipv4-address->int (addr)
@@ -160,13 +202,14 @@
 
 @export
 (defun grab-label ()
+  (when *debug* (format *debug* "grab-label~%"))
   (let ((l '()) (len  (elt (grab-octets 1) 0)))
-    (when *debug* (format t "~%[grab-label ~3d]~%" len))
+    (when *debug* (format *debug* "~%[grab-label ~3d]~%" len))
     (;loop for i from 0 to (-  len 1) 
      dotimes (i len)
      (let ((p packet::*decode-position*)
            (c (code-char (elt (grab-octets 1) 0))))
-       (when *debug* (format t "~4d ~3d ~a~%"  (octet-bit p) (char-code c) c))
+       (when *debug* (format *debug* "~4d ~3d ~a~%"  (octet-bit p) (char-code c) c))
        (setf l (cons c l))
        ))
     (concatenate 'string (reverse l))))
@@ -193,36 +236,42 @@ used, the length of the compressed name is used in the length
 calculation, rather than the length of the expanded name.
 |#
 @export
-(defun grab-domain-name ()
-  (when *debug*
-    (print (list "**GRAB DOMAIN NAME**" packet::*decode-buffer*
-                 packet::*decode-position*)))
-  (format nil "~{~A~^.~}" (remove-if #'null 
-  (loop
-   with last = nil
-   until last
-   for p = (elt packet::*decode-buffer*
-                (packet::bit-octet packet::*decode-position*))
-   collect
-   (cond
-    ((= p 0)
-     (incf packet::*decode-position* 8)
-     (setf last t)
-     '())
-    ( (= 192 (logand #b11000000 p))
-      (incf packet::*decode-position* 8)
-      (let ((ptr  (elt (grab-octets 1) 0))
-            (cpo packet::*decode-position*))
-        (when *debug* (format t "jump ~a->~a~%"  ( bit-octet cpo) ptr)) 
-        (setf packet::*decode-position* (+  (octet-bit ptr) 0))
-        (let ((nm (grab-domain-name)))
-          (setf packet::*decode-position* cpo)
-          (setf last t)
-          nm)
-        ))
-    (t (grab-label)))
-   )
-  )))
+(defun grab-domain-name (&key (depth 0))
+  (handler-case
+      (progn (when *debug*
+	       (format *debug*  "grab-domain-name~%decode-pos:~a~%~a" packet::*decode-buffer* packet::*decode-position*))
+	     (if (> depth 10)
+		 "--"
+		 
+		 (format nil "~{~A~^.~}" 
+			 (remove-if #'null 
+				    (loop
+				       with last = nil
+				       until last
+				       for p = (elt packet::*decode-buffer*
+						    (packet::bit-octet packet::*decode-position*))
+				       collect
+					 (cond
+					   ((= p 0)
+					    (incf packet::*decode-position* 8)
+					    (setf last t)
+					    '())
+					   ( (= 192 (logand #b11000000 p))
+					    (incf packet::*decode-position* 8)
+					     (let ((ptr  (elt (grab-octets 1) 0))
+						   (cpo packet::*decode-position*))
+					       (when *debug* (format *debug* "jump ~a->~a~%"  ( bit-octet cpo) ptr)) 
+					       (setf packet::*decode-position* (+  (octet-bit ptr) 0))
+					       (let ((nm (grab-domain-name :depth (+ depth 1))))
+						 (setf packet::*decode-position* cpo)
+						 (setf last t)
+						 nm)
+					       ))
+					   (t (grab-label)))
+					 )
+				    ))))
+   (error (e) (format t "~a" e) "ERROR")
+   ))
 
 @export
 (defun shove-domain-name (name)
@@ -284,8 +333,8 @@ calculation, rather than the length of the expanded name.
                        :qname (grab-domain-name)
                        :qtype (lookup (octet-vector-to-int-2 (grab-octets 2))
                                       *dns-qtype* :errorp nil)
-                       :qclass (lookup (octet-vector-to-int-2 (grab-octets 2))
-                                       *dns-class* :errorp nil)
+                       :qclass (lookup-record-class (octet-vector-to-int-2 (grab-octets 2))) 
+					;(lookup (octet-vector-to-int-2 (grab-octets 2))*dns-class* :errorp nil)
                        )) (grab-dns-question (- n 1)))
       nil)))
     (grab-dns-question (dns-header.qdcount/zcount hdr))))
@@ -320,17 +369,27 @@ signalled; if ERRORP is nil then the key itself is returned."
   )
 @export
 (defun grab-dns-answers (hdr &key times)
-  (when *debug* (print (list  "------------- (grab-dns-answers) ------------" times)))
+  (when *debug* ( format *debug* "grab-dns-answers~%~a" times))
   (labels (
     (grab-dns-answer (n) 
       (if (> n 0)
           (let* (
                  (domain-name (if (= 0 (elt (stroke-octets 1) 0)) (progn  (bump 1) "") (grab-domain-name)))
-                (rec-type (lookup (octet-vector-to-int-2
-                                          (grab-octets 2))
-                                         *dns-qtype* :errorp nil) )
-                (rec-class  (lookup (octet-vector-to-int-2 (grab-octets 2))
-                                    *dns-class* :errorp nil))
+		 (rec-type (handler-case 
+			       (lookup (octet-vector-to-int-2
+						  (grab-octets 2))
+						 *dns-qtype* :errorp T)
+			     (error (e) (progn 
+					;(format t "WTF: class that dosent match ~%" )
+				:UNASSIGNED
+				))
+			     )
+		   
+		   )
+		 (rec-class  (let ((val (octet-vector-to-int-2 (grab-octets 2)))) 
+				   ( lookup-record-class val) ;(lookup val *dns-class* :errorp t)
+				   )
+		   )
 
                 (ttl  (octet-vector-to-int-4 (grab-octets 4)))
                 (rdlength (octet-vector-to-int-2
@@ -367,15 +426,15 @@ signalled; if ERRORP is nil then the key itself is returned."
                           
                           )
                     (restart-case
-                               (grab-dns-answer (- n 1))                
-                               (skip-name nil))
+                               ;(grab-dns-answer (- n 1))                
+		      (handler-case (skip-name nil) (error (e) ( format *debug* "grab-dns-answer:~%~a~%" e) nil)))
 
                     )
             )
         nil
         ))
     )
-(grab-dns-answer (if times times (dns-header.ancount/prcount hdr)))
+    (grab-dns-answer (if times times (dns-header.ancount/prcount hdr)))
     )
   
 
@@ -387,7 +446,7 @@ signalled; if ERRORP is nil then the key itself is returned."
  )
 @export
 (defun shove-dns-answer (answer)
-  (when *debug* (print "------------- (shove-dns-answers) ------------")) 
+  (when *debug* (format *debug* "shove-dns-answer~%")) 
   (with-slots (name type class ttl rdlength rdata) answer
     (shove-domain-name name)
     (shove-bits type 16)
@@ -434,9 +493,10 @@ signalled; if ERRORP is nil then the key itself is returned."
 
 @export
 (defun decode-dns-payload (p)
+  (when *debug* (format t "decode-dns-payload") )
   (packet:with-buffer-input p
     (let ((hdr (grab-dns-header )))
-      (when *debug* (print hdr))
+      (when *debug* (format t "~a" hdr) )
       (make-dns-packet :header hdr
                        :questions (grab-dns-questions hdr)
                        :answers (grab-dns-answers hdr)

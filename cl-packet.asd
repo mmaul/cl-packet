@@ -33,35 +33,6 @@
                (:file "packet-dns-client")
                ))
 
-(asdf:defsystem #:cl-packet-analyzer
-  :serial t
-  :description "Packet analyzer functionality
-    Features:
-      * Collection of raw network traffic
-      * Packet analsis of select protocols
-      * storage
-  "
-  :author "Mike Maul <mike.maul@gmail.com>"
-  :license "BSD"
-  :depends-on (
-               #:alexandria
-               #:cl-annot
-               #:plokami
-               #:iterate
-               #:lparallel
-               #:cl-syslog
-               #:flexi-streams
-               #:split-sequence
-	       #:cl-variates
-               #:cl-redis
-               #:cl-packet
-               )
-  :components ((:module "packet-analyzer"
-			:serial t
-                        :components ((:file "package")
-                          (:file "packet-analyzer"))
-                        )))
-
 
 (asdf:defsystem :cl-packet-tests
   :description "tests for cl-packet library"

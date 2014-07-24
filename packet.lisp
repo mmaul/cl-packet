@@ -461,9 +461,9 @@ signalled; if ERRORP is nil then the key itself is returned."
   (set-macro-character #\^ 'read-ipv4-address t)
 @export
   (defun print-ipv4-address (address stream depth)
-    "Print IPv4 addresses as in ^192.168.0.1."
+    "Print IPv4 addresses as in 192.168.0.1."
     (declare (ignore depth))
-    (format stream "^~{~A~^.~}" (coerce (ipv4-address.octets address) 'list)))
+    (format stream "~{~A~^.~}" (coerce (ipv4-address.octets address) 'list)))
   
   (defmethod make-load-form ((s ipv4-address) &optional env)
     (make-load-form-saving-slots s :environment env)))

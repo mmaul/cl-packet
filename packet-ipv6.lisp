@@ -124,7 +124,7 @@ address. CASE may be :DOWNCASE or :UPCASE."
 (defun simple-print-ipv6-address (address stream depth)
   "Print IPv4 addresses as in ^192.168.0.1."
   (declare (ignore depth))
-  (format stream "^~{~X~X~^:~}" (coerce (ipv6-address.quads address) 'list)))
+  (format stream "~{~X~X~^:~}" (coerce (ipv6-address.quads address) 'list)))
   
 
 @export
@@ -212,7 +212,9 @@ RFC 2460                   IPv6 Specification              December 1998
         (start (bit-octet *decode-position*)))
     (incf *decode-position* (* num 8))
     
-    (make-ipv6-address :quads (subseq *decode-buffer* start (+ num start)))))
+    (make-ipv6-address :quads (coerce  (subseq *decode-buffer* start (+ num start)) '(SIMPLE-ARRAY (UNSIGNED-BYTE 16) )
+				       
+				       ))))
 
 @export
 (defun grab-ipv6-address1 ()
@@ -241,8 +243,8 @@ RFC 2460                   IPv6 Specification              December 1998
                     :payload-length (octet-vector-to-int-2 (grab-octets 2))
                     :next-header (get-protocol  (grab-octet))
                     :hop-limit (grab-octet)
-                    :source (grab-ipv6-address)
-                    :dest (grab-ipv6-address)
+                    :source (grab-ipv6-address1)
+                    :dest (grab-ipv6-address1)
                                     )
                   )
 
