@@ -37,10 +37,12 @@
 ;;; are octet-vectors for the encoded binary representations of
 ;;; packets.
 ;;;
+@export
 (deftype buffer ()
   "A network packet represented as a vector of octets."
   '(array octet (*)))
 
+@export
 (deftype octet ()
   "An unsigned 8-bit byte."
   '(unsigned-byte 8))

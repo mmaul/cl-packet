@@ -6,11 +6,7 @@
 (defvar *dns-qr-names* '((0 . :request) (1 . :response))
   "Mapping between DNS QR bit and their symbolic names.")
 (defparameter *debug* nil)
-(defun dns-QR (qr)
-  "Return the symbolic name for QR, if appropriate."
-  (if *resolve-protocols*
-      (lookup qr *dns-qr-names* :errorp nil)
-      qr))
+
 
 ;labels          63 octets or less
 ;names           255 octets or less
@@ -72,29 +68,57 @@
     (16 . TXT)   ;text strings
     (17 . RP)
     (18 . AFSDB)
-    (25 . SIG)
+    (19 . X25) ;	for X.25 PSDN address	[RFC1183]		
+    (20 . ISDN) ;	for ISDN address	[RFC1183]		
+    (21 . RT) ;	for Route Through	[RFC1183]		
+    (22 . NSAP) ;	for NSAP address, NSAP style A record	[RFC1706]		
+    (23 . NSAP-PTR) ;for domain name pointer, NSAP style	[RFC1348][RFC1637][RFC1706]
+    (24 . SIG)
     (25 . KEY)
+    (26 . PX) ;	X.400 mail mapping information	[RFC2163]		
+    (27 . GPOS) ;	Geographical Position	[RFC1712]
     (28 . AAAA)  ;AAAA record
-    (28 . LOC)
+    (29 . LOC)
+    (30 . NXT) ;	Next Domain (OBSOLETE)	[RFC3755][RFC2535]		
+    (31 . EID) ;	Endpoint Identifier [Michael_Patton][http://ana-3.lcs.mit.edu/~jnc/nimrod/dns.txt]
+    (32 . NIMLOC) ;	Nimrod Locator
     (33 . SRV)
+    (34 . ATMA) ;	ATM Address
     (35 . NAPTR)
     (36 . KX)
     (37 . CERT)
     (38 . A6)
     (39 . DNAME)
+    (40 . SINK) ;	[Donald_E_Eastlake][http://tools.ietf.org/html/draft-eastlake-kitchen-sink]
     (41 . EDNS0)
+    (42 . APL);	APL	[RFC3123]
     (43 . DS)
     (44 . SHFP)
     (45 . IPSECKEY)
     (46 . RRSIG)   ;text strings
     (47 . NSEC)
     (48 . DNSKEY)   ;text strings
-    (49 .DHCID)
+    (49 . DHCID)
     (50 . NSEC3)
     (51 . NSEC3PARAM)
     (52 . TLSA)
     (55 . HIP)
+    (56 . NINFO);	[Jim_Reid]	NINFO/ninfo-completed-template	2008-01-21
+    (57 . RKEY) ;	[Jim_Reid]	RKEY/rkey-completed-template	2008-01-21
+    (58 . TALINK) ;	Trust Anchor LINK	[Wouter_Wijngaards] TALINK/talink-completed-template 2010-02-17
+    (59 . CDS) ;Child DS [RFC-ietf-dnsop-delegation-trust-maintainance-14]CDS/cds-completed-template 2011-06-06
+    (60 . CDNSKEY);DNSKEY(s) the child wants reflected in DS[RFC-ietf-dnsop-delegation-trust-maintainance-14] 2014-06-16
     (99 . SPF)
+    (100 . UINFO)	;	[IANA-Reserved]		
+    (101 . UID)	;	[IANA-Reserved]		
+    (102 . GID)	;	[IANA-Reserved]		
+    (103 . UNSPEC);		[IANA-Reserved]		
+    (104 . NID)	;	[RFC6742]	ILNP/nid-completed-template	
+    (105 . L32)	;	[RFC6742]	ILNP/l32-completed-template	
+    (106 . L64)	;	[RFC6742]	ILNP/l64-completed-template	
+    (107 . LP)	;	[RFC6742]	ILNP/lp-completed-template	
+    (108 . EUI48)	;an EUI-48 address	[RFC7043]	EUI48/eui48-completed-template	2013-03-27
+    (109 . EUI64)	;an EUI-64 address	[RFC7043]	EUI64/eui64-completed-template	2013-03-27
     (249 . TKEY)
     (250 . TSIG)
     (251 . IXFR)
@@ -102,11 +126,34 @@
     (253 . MAILB) ;A request for mailbox-related records (MB, MG or MR)
     (254 . MAILA) ;A request for mail agent RRs (Obsolete - see MX)
     (255 . ANY) ;A request for all records
+    (256 . URI)
     (257 . CAA)
     (32768 . TA)
+    (32769 . DLV) ; DNSSEC Lookaside Validation	[RFC4431]
+    (65535 . Reserved)	
     
     ) 
   
+  )
+
+(declaim (inline lookup-dns-query-type) 
+	 (ftype (function (integer) symbol) lookup-dns-query-type))
+(defun lookup-dns-qtype (c)
+  (declare (optimize (speed 3)(safety 0)(debug 0)))
+  (let ((s (lookup c *dns-qtype* :errorp nil)))
+    (declare (type symbol s))
+    (if (symbolp s)
+	s
+	(cond
+	  ((and (>= c 53) (<= c 54)) 'UNASSIGNED)
+	  ((and (>= c 61) (<= c 98)) 'UNASSIGNED)
+	  ((and (>= c 258) (<= c 32767)) 'UNASSIGNED)
+	  ((and (>= c 32770) (<= c 65279)) 'PRIVATE-USE)
+	  ((and (>= c 65280) (<= c 65534)) 'UNASSIGNED)
+	  (t 'ERROR)
+	  )
+	)
+    )
   )
 
 (defvar *dns-class* 
@@ -331,8 +378,7 @@ calculation, rather than the length of the expanded name.
     (if (> n 0)
         (append (list (make-dns-question
                        :qname (grab-domain-name)
-                       :qtype (lookup (octet-vector-to-int-2 (grab-octets 2))
-                                      *dns-qtype* :errorp nil)
+                       :qtype (lookup-dns-qtype (octet-vector-to-int-2 (grab-octets 2)))
                        :qclass (lookup-record-class (octet-vector-to-int-2 (grab-octets 2))) 
 					;(lookup (octet-vector-to-int-2 (grab-octets 2))*dns-class* :errorp nil)
                        )) (grab-dns-question (- n 1)))
@@ -376,9 +422,7 @@ signalled; if ERRORP is nil then the key itself is returned."
           (let* (
                  (domain-name (if (= 0 (elt (stroke-octets 1) 0)) (progn  (bump 1) "") (grab-domain-name)))
 		 (rec-type (handler-case 
-			       (lookup (octet-vector-to-int-2
-						  (grab-octets 2))
-						 *dns-qtype* :errorp T)
+			       (lookup-dns-qtype (octet-vector-to-int-2 (grab-octets 2)))
 			     (error (e) (progn 
 					;(format t "WTF: class that dosent match ~%" )
 				:UNASSIGNED
@@ -395,27 +439,27 @@ signalled; if ERRORP is nil then the key itself is returned."
                 (rdlength (octet-vector-to-int-2
                                           (grab-octets 2)))
                 (rdata (case rec-type
-                                    ('a (make-ipv4-address :octets (grab-octets rdlength)))
-                                    ('cname (grab-domain-name))
-                                    ('aaaa (ipv6-octets-to-string (grab-octets rdlength)))
-                                    ('mx (format nil "~d ~a" (octet-vector-to-int-2 (grab-octets 2)) (grab-domain-name)))
-                                    ('ns (grab-domain-name))
-                                    ('ptr (grab-domain-name))
-                                    ; SOA: mname  cname serial refresh retry
-                                    ;      expire min
-                                    ('soa (format nil "~a ~a ~a ~a ~a ~a ~a"
-                                                  (grab-domain-name) (grab-domain-name)
-                                                  (octet-vector-to-int-4  (grab-octets 4))
-                                                  (octet-vector-to-int-4  (grab-octets 4))
-                                                  (octet-vector-to-int-4  (grab-octets 4))
-                                                  (octet-vector-to-int-4  (grab-octets 4))
-                                                  (octet-vector-to-int-4  (grab-octets 4))
-                                                  ))
-                                    ('txt (format nil "\"~a\"" (FLEXI-STREAMS:OCTETS-TO-STRING (grab-octets rdlength) :start 0 :end rdlength)))
-                                    (otherwise (grab-octets rdlength))
-                                    )
-                       )
-                )
+			 (a (make-ipv4-address :octets (grab-octets rdlength)))
+			 (cname (grab-domain-name))
+			 (aaaa (ipv6-octets-to-string (grab-octets rdlength)))
+			 (mx (format nil "~d ~a" (octet-vector-to-int-2 (grab-octets 2)) (grab-domain-name)))
+			 (ns (grab-domain-name))
+			 (ptr (grab-domain-name))
+					; SOA: mname  cname serial refresh retry
+					;      expire min
+			 (soa (format nil "~a ~a ~a ~a ~a ~a ~a"
+				       (grab-domain-name) (grab-domain-name)
+				       (octet-vector-to-int-4  (grab-octets 4))
+				       (octet-vector-to-int-4  (grab-octets 4))
+				       (octet-vector-to-int-4  (grab-octets 4))
+				       (octet-vector-to-int-4  (grab-octets 4))
+				       (octet-vector-to-int-4  (grab-octets 4))
+				       ))
+			 (txt (format nil "\"~a\"" (FLEXI-STREAMS:OCTETS-TO-STRING (grab-octets rdlength) :start 0 :end rdlength)))
+			 (otherwise (grab-octets rdlength))
+			 )
+		  )
+		 )
             (append (list (make-dns-answer
                            :name domain-name
                            :type rec-type
@@ -427,7 +471,7 @@ signalled; if ERRORP is nil then the key itself is returned."
                           )
                     (restart-case
                                ;(grab-dns-answer (- n 1))                
-		      (handler-case (skip-name nil) (error (e) ( format *debug* "grab-dns-answer:~%~a~%" e) nil)))
+		      (handler-case (skip-name nil) (error (e) (format *debug* "grab-dns-answer:~%~a~%" e) nil)))
 
                     )
             )
@@ -438,11 +482,7 @@ signalled; if ERRORP is nil then the key itself is returned."
     )
   
 
-  #||
-     (restart-case (grab-dns-answer (if times times (dns-header.ancount/prcount hdr)))
-                  (skip-name () '( "ERROR"))
-  )
-  ||#
+  
  )
 @export
 (defun shove-dns-answer (answer)
@@ -463,10 +503,10 @@ signalled; if ERRORP is nil then the key itself is returned."
 @export
 (defun decode-dns-raw (p)
   (handler-bind ((malformed-dns-entry-error
-                  #'(lambda (c) (print "WTF")
+                  #'(lambda (c) (format t "malformed-dns-error:~a~%" c)
                       (invoke-restart 'skip-name)))
                  (simple-error
-                  #'(lambda (c) (print "XXX")
+                  #'(lambda (c) (format t "simple-error: ~a~%" c)
                       (invoke-restart 'skip-name))))
     (let* ((dec (decode p))
          (l3 (elt dec 1))
@@ -513,7 +553,7 @@ signalled; if ERRORP is nil then the key itself is returned."
 (defun decode-dns (p)
   (print "decode-dns")
   (let* ((dec (decode p))
-         (l3 (elt dec 1))
+         ;(l3 (elt dec 1))
          (l4 (elt dec 2)) )
     (if (or (= (udp-header.src-port l4 ) 53)
             (= (udp-header.dest-port l4 ) 53))
