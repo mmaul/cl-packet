@@ -142,7 +142,7 @@
 
 
 @export
-(defun dns-influx-db (eth ip udp dns-pkt &key (geodb nil))
+(defun dns-influx-db (eth ip udp dns-pkt &key (geodb nil) (query nil))
   (declare (ignore eth) (ignore udp))
   (let* ((q-list (dns-packet.questions dns-pkt))
          (a-list (dns-packet.answers dns-pkt))
@@ -155,13 +155,16 @@
 	 (s-geocode (if geodb (cl-geoip:get-record geodb (ccl:ipaddr-to-dotted s-ip)) nil))
 	 )
     (flet ((do-write-points (name in) 
-			    (write-points 
+	     
+	     (write-points 
 			     *dns-db* 
 			     (list (list (cons :NAME  name) 
-					 (cons :COLUMNS '(id client server opcode rcode qname type class ttl rdlength rdata client_cc server_cc ans_cc))
+					 (cons :COLUMNS '(id client client_ip server server_ip opcode rcode qname type class ttl rdlength rdata client_cc server_cc ans_cc))
 					 (cons :points (list (list (dns-header.id h) 
-								   (normalize-ipv4-ipv6 d-ip :source)
-								   (normalize-ipv4-ipv6 s-ip :source)
+								   d-ip
+								   (print-ipv4-address (ipv4-header.dest ip) nil 0)
+								   s-ip
+								   (print-ipv4-address (ipv4-header.source ip) nil 0)
 								   (symbol-name (dns-header.opcode h))
 								   (symbol-name (dns-header.rcode h))
 								   (string-downcase (dns-answer.name in))
@@ -188,7 +191,7 @@
 	    (dolist (a a-list) (do-write-points "answers" a))
 	    (dolist (n n-list) (do-write-points "authorities" n))
 	    (dolist (d d-list) (do-write-points "additionals" d)))
-	(progn
+	(when query
 	  (dolist (q q-list) ;opcode type class query
 		 (write-points 
 		  *dns-db*
@@ -272,9 +275,9 @@
 			  (cons :d_ip   (ccl:ipaddr-to-dotted d-ip))
 			  (cons :sip    (ccl:ipaddr-to-dotted s-ip))
 			  (cons :opcode (symbol-name (dns-header.opcode h)))
-			  (cons :qname  (string-downcase (dns-answer.name in)))
-			  (cons :type   (symbol-name (dns-answer.type in)))
-			  (cons :class  (symbol-name (dns-answer.class in)))
+			  (cons :qname (string-downcase (dns-question.qname q)))
+			  (cons :type (symbol-name (dns-question.qtype q)))
+			  (cons :class (symbol-name (dns-question.qclass q)))
 			  (cons :d_cc   (if d-geocode (cl-geoip:record-country-code d-geocode) ""))
 			  (cons :s_cc   (if s-geocode (cl-geoip:record-country-code s-geocode) ""))
 			  )))
@@ -347,9 +350,9 @@
 			  (cons :d_ip   (ccl:ipaddr-to-dotted d-ip))
 			  (cons :sip    (ccl:ipaddr-to-dotted s-ip))
 			  (cons :opcode (symbol-name (dns-header.opcode h)))
-			  (cons :qname  (string-downcase (dns-answer.name in)))
-			  (cons :type   (symbol-name (dns-answer.type in)))
-			  (cons :class  (symbol-name (dns-answer.class in)))
+			  (cons :qname (string-downcase (dns-question.qname q)))
+			  (cons :type (symbol-name (dns-question.qtype q)))
+			  (cons :class (symbol-name (dns-question.qclass q)))
 			  (cons :d_cc   (if d-geocode (cl-geoip:record-country-code d-geocode) ""))
 			  (cons :s_cc   (if s-geocode (cl-geoip:record-country-code s-geocode) ""))
 			  ))))
@@ -362,7 +365,7 @@
     
     
     ))
-(defun dns-csv-logger (eth ip udp dns-pkt &key (geodb nil))
+(defun dns-csv-logger (eth ip udp dns-pkt &key (geodb nil) (authority nil) (additional nil) (query t) (answer t))
   (declare (ignore eth) (ignore udp))
   (let* ((q-list (dns-packet.questions dns-pkt))
          (a-list (dns-packet.answers dns-pkt))
@@ -409,10 +412,10 @@
 	       )))
       (if ( dns-header.qr dns-pkt)
 	  (progn
-	    (dolist (a a-list) (do-write-points a "answer"))
-	    (dolist (n n-list) (do-write-points n "authority"))
-	    (dolist (d d-list) (do-write-points d "additional")))
-	  (progn
+	    (when answer (dolist (a a-list) (do-write-points a "answer")))
+	    (when authority (dolist (n n-list) (do-write-points n "authority")))
+	    (when additional (dolist (d d-list) (do-write-points d "additional"))))
+	  (when query
 	    (dolist (q q-list) ;opcode type class query
 	      (cl-syslog.udp:ulog-bare
 	       (format nil "~{~A~^,~}"
@@ -422,9 +425,9 @@
 			      (ccl:ipaddr-to-dotted d-ip)
 			      (ccl:ipaddr-to-dotted s-ip)
 			      (symbol-name (dns-header.opcode h))
-			      (string-downcase (dns-answer.name in))
-			      (symbol-name (dns-answer.type in))
-			      (symbol-name (dns-answer.class in))
+			      (string-downcase (dns-question.qname q))
+			      (symbol-name (dns-question.qtype q))
+			      (symbol-name (dns-question.qclass q))
 			      (if d-geocode (cl-geoip:record-country-code d-geocode) "")
 			      (if s-geocode (cl-geoip:record-country-code s-geocode) "")
 			      )))
@@ -483,19 +486,23 @@
   "
   (let ((pcap (make-pcap-live intf :promisc promisc :nbio nbio
                               :timeout timeout :snaplen snaplen ))
-        (geodb (cl-geoip:load-db (asdf:system-relative-pathname 'geoip "GeoLiteCity.dat"))))
+        (geodb (cl-geoip:load-db (asdf:system-relative-pathname 'geoip "GeoLiteCity.dat")))
+	(cnt 0)
+	)
     (set-filter pcap filt)
     (loop
        with start = (get-universal-time)
-       while (or  (not secs) (<  (- (get-universal-time) start) secs)) do
+       while (and  (or (not secs) (<  (- (get-universal-time) start) secs)) 
+		   (or  (< num 0) (and (> num 0) (< cnt num)))) do
        (capture pcap num 
                 (lambda (sec usec caplen len buffer)
 		  (declare (ignore sec) (ignore usec) (ignore caplen) (ignore len))
 		  (handler-case 
 		      (destructuring-bind (eth ip udp payload) (decode buffer)
 				  (let ((pkt (decode-dns-payload payload)))
-				    ;(dns-influx-db  eth ip udp pkt :geodb geodb)
-				    (dns-csv-logger eth ip udp pkt :geodb geodb) 
+				    (dns-influx-db  eth ip udp pkt :geodb geodb :query nil)
+				    ;;;; splunk (dns-csv-logger eth ip udp pkt :geodb geodb :query nil) 
+				    ;(dns-csv-logger eth ip udp pkt :geodb geodb :query nil) 
 				    ;(dns-kv-logger eth ip udp pkt :geodb geodb) 
 				    ;(dns-json-logger eth ip udp pkt :geodb geodb) 
 				    ;(dns-logger eth ip udp pkt)
@@ -507,7 +514,7 @@
 		    
 		    )
 		  ;(break)
-		  
+		  (when (> num 0) (setq cnt (+ cnt 1)))
                   ))
        ;; Better to use select/epoll/kqueue on pcap-live-descriptor
 	 (when nbio (sleep 0.00001)))
