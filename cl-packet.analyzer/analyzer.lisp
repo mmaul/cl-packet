@@ -6,7 +6,7 @@
   (setf lparallel:*kernel* (lparallel:make-kernel 4))
   (setf *debug-tasks-p* nil)
   )
-(udp-logger "10.244.6.26" :port 5353)
+
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;; Influx DB connection params
 (defparameter *db* "DNS")
@@ -32,6 +32,9 @@
             (simple-date-time:MILLISECOND-OF v)
             )))
 
+(defun init-udp-logger ()
+  (udp-logger "10.244.6.26" :port 5353)
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Task Handlers
@@ -46,7 +49,7 @@
 		 (funcall analyzer eth ip udp pkt :geodb geodb)
 		 )
 	     (error (e) (progn 
-			  (ulog (format nil " ~a[~a]" e payload))))
+			  (format t " ~a[~a]" e payload)))
 	     )))))
 
 
@@ -508,7 +511,7 @@
 				    ;(dns-logger eth ip udp pkt)
 				    ))
 		    (error (e) (progn 
-				 (ulog (format nil " ~a[~a]" e buffer))
+				 (format t " ~a[~a]" e buffer)
 				 (format t "ERROR ~a~%~a~%" e (hexdump buffer))
 				 ))
 		    

@@ -29,6 +29,8 @@
                         :components 
 			((:file "package")
 			 (:file "utilities")
-			 (:file "analyzer"))
+			 (:file "analyzer")
+			 (:file "run-analyzer")
+			 )
                         )))
 
