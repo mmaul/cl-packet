@@ -33,7 +33,8 @@
             )))
 
 (defun init-udp-logger ()
-  (udp-logger "10.244.6.26" :port 5353)
+  ;(udp-logger "10.244.6.26" :port 5353)
+  (udp-logger "127.0.0.1" :port 514)
   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -44,13 +45,13 @@
   (let ((geodb (cl-geoip:load-db (asdf:system-relative-pathname 'geoip "GeoLiteCity.dat"))))
     (loop do
 	 (destructuring-bind (eth ip udp payload) (decode (pop-queue queue))
-	   (handler-case  
-	       (let* ((pkt (decode-dns-payload payload)))
+	   (let* ((pkt (decode-dns-payload payload)))
 		 (funcall analyzer eth ip udp pkt :geodb geodb)
 		 )
-	     (error (e) (progn 
-			  (format t " ~a[~a]" e payload)))
-	     )))))
+           ;
+           ;
+           ;(handler-case (error (e) (progn (format t " ~a[~a]" e payload))))
+           ))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -59,8 +60,7 @@
 (defun dns-writer (stream eth ip udp pkt)
   (declare (ignore eth) (ignore udp))
   "Writes to console and syslog"
-  (handler-case
-      (let* ((h (DNS-PACKET.HEADER pkt)))
+  (let* ((h (DNS-PACKET.HEADER pkt)))
 	(labels (
 		 (log-rrs (n ss) (dolist (s ss)
 				   (format stream "~a[~a] ~a ~a ~a ~a ~a from ~a to ~a~%"
@@ -82,8 +82,7 @@
 	  (log-rrs "answer"     (dns-packet.answers pkt))
 	  (log-rrs "additional" (dns-packet.additionals pkt)))
 	nil)
-    (error (e) ( format t "ERROR:~a~%~%" e))
-    )
+  ;(handler-case (error (e) ( format t "ERROR:~a~%~%" e)))
   )
 
 
@@ -145,17 +144,20 @@
 
 
 @export
-(defun dns-influx-db (eth ip udp dns-pkt &key (geodb nil) (query nil))
-  (declare (ignore eth) (ignore udp))
-  (let* ((q-list (dns-packet.questions dns-pkt))
+(defun dns-influx-db (eth ip udp dns-pkt1 &key (geodb nil) (query nil))
+  (declare (ignore eth) (ignore udp) (ignore dns-pkt1))
+  (let* ((dns-pkt dns-pkt1)
+         (q-list (dns-packet.questions dns-pkt))
          (a-list (dns-packet.answers dns-pkt))
          (n-list (dns-packet.authorities dns-pkt))
          (d-list (dns-packet.additionals dns-pkt))
          (h (dns-packet.header dns-pkt))
 	 (d-ip (octet-vector-to-int-4  (ipv4-address.octets (ipv4-header.dest ip)))) 
 	 (s-ip (octet-vector-to-int-4  (ipv4-address.octets (ipv4-header.source ip)))) 
-	 (d-geocode (if geodb (cl-geoip:get-record geodb (ccl:ipaddr-to-dotted d-ip)) nil))
-	 (s-geocode (if geodb (cl-geoip:get-record geodb (ccl:ipaddr-to-dotted s-ip)) nil))
+         (d-geocode (if geodb (cl-geoip:get-record geodb #+ccl (ccl:ipaddr-to-dotted d-ip)
+                                                   #-ccl (print-ipv4-address d-ip nil)) nil))
+         (s-geocode (if geodb (cl-geoip:get-record geodb #+ccl (ccl:ipaddr-to-dotted s-ip)
+                                                   #-ccl (print-ipv4-address s-ip nil)) nil))
 	 )
     (flet ((do-write-points (name in) 
 	     
@@ -189,7 +191,7 @@
 			     
 			     
 			     )))
-      (if ( dns-header.qr dns-pkt)
+      (if ( dns-header.qr h)
 	  (progn
 	    (dolist (a a-list) (do-write-points "answers" a))
 	    (dolist (n n-list) (do-write-points "authorities" n))
@@ -216,17 +218,22 @@
     
     ))
 
-(defun dns-json-logger (eth ip udp dns-pkt &key (geodb nil))
+(defun dns-json-logger (eth ip udp dns-pkt1 &key (geodb nil))
   (declare (ignore eth) (ignore udp))
-  (let* ((q-list (dns-packet.questions dns-pkt))
+  (let* ((dns-pkt dns-pkt1 ;(nth-value 0 )
+           )
+         (q-list (dns-packet.questions dns-pkt))
          (a-list (dns-packet.answers dns-pkt))
          (n-list (dns-packet.authorities dns-pkt))
          (d-list (dns-packet.additionals dns-pkt))
          (h (dns-packet.header dns-pkt))
 	 (d-ip (octet-vector-to-int-4  (ipv4-address.octets (ipv4-header.dest ip)))) 
 	 (s-ip (octet-vector-to-int-4  (ipv4-address.octets (ipv4-header.source ip)))) 
-	 (d-geocode (if geodb (cl-geoip:get-record geodb (ccl:ipaddr-to-dotted d-ip)) nil))
-	 (s-geocode (if geodb (cl-geoip:get-record geodb (ccl:ipaddr-to-dotted s-ip)) nil))
+	 (d-geocode (if geodb (cl-geoip:get-record geodb #+ccl (ccl:ipaddr-to-dotted d-ip)
+                                               #-ccl (print-ipv4-address d-ip nil)
+                                               ) nil))
+	 (s-geocode (if geodb (cl-geoip:get-record geodb #+ccl (ccl:ipaddr-to-dotted s-ip)
+                                               #-ccl (print-ipv4-address s-ip nil)) nil))
 	 (timestamp (epoch-to-human-time))
 	 
 	 )
@@ -237,8 +244,8 @@
 			    (cons :timestamp timestamp)
 			    (cons :id     (dns-header.id h))
 			    (cons :section section)
-			    (cons :d_ip   (ccl:ipaddr-to-dotted d-ip))
-			    (cons :sip    (ccl:ipaddr-to-dotted s-ip))
+			    (cons :d_ip   #+ccl (ccl:ipaddr-to-dotted d-ip) #-ccl (print-ipv4-address d-ip nil))
+			    (cons :sip    #+ccl (ccl:ipaddr-to-dotted s-ip) #-ccl (print-ipv4-address s-ip nil))
 			    (cons :opcode (symbol-name (dns-header.opcode h)))
 			    (cons :rcode  (symbol-name (dns-header.rcode h)))
 			    (cons :qname  (string-downcase (dns-answer.name in)))
@@ -258,25 +265,26 @@
 					      ""
 					      )
 				  ))))) 
-	       (cl-syslog.udp:ulog-bare json-string)
+	       #+ignore (cl-syslog.udp:ulog-bare json-string)
 	       
 	       )))
       ;(break)
-      (if ( dns-header.qr dns-pkt)
+      (if ( dns-header.qr h)
 	  (progn
 	    (dolist (a a-list) (do-write-points a "answer"))
 	    (dolist (n n-list) (do-write-points n "authority"))
 	    (dolist (d d-list) (do-write-points d "additional")))
 	(progn
 	  (dolist (q q-list) ;opcode type class query
-		 (cl-syslog.udp:ulog-bare
+        #+ignore
+        (cl-syslog.udp:ulog-bare
 		  (cl-json:encode-json-to-string
 		   (list 
 			  (cons :timestamp timestamp)
 			  (cons :id     (dns-header.id h))
 			  (cons :section "query")
-			  (cons :d_ip   (ccl:ipaddr-to-dotted d-ip))
-			  (cons :sip    (ccl:ipaddr-to-dotted s-ip))
+			  (cons :d_ip   #+ccl (ccl:ipaddr-to-dotted d-ip) #-ccl (print-ipv4-address d-ip nil))
+			  (cons :sip    #+ccl (ccl:ipaddr-to-dotted s-ip) #-ccl (print-ipv4-address s-ip nil))
 			  (cons :opcode (symbol-name (dns-header.opcode h)))
 			  (cons :qname (string-downcase (dns-question.qname q)))
 			  (cons :type (symbol-name (dns-question.qtype q)))
@@ -291,17 +299,18 @@
     
     ))
 
-(defun dns-kv-logger (eth ip udp dns-pkt &key (geodb nil))
+(defun dns-kv-logger (eth ip udp dns-pkt1 &key (geodb nil))
   (declare (ignore eth) (ignore udp))
-  (let* ((q-list (dns-packet.questions dns-pkt))
+  (let* ((dns-pkt (nth-value 0 dns-pkt1))
+         (q-list (dns-packet.questions dns-pkt))
          (a-list (dns-packet.answers dns-pkt))
          (n-list (dns-packet.authorities dns-pkt))
          (d-list (dns-packet.additionals dns-pkt))
          (h (dns-packet.header dns-pkt))
 	 (d-ip (octet-vector-to-int-4  (ipv4-address.octets (ipv4-header.dest ip)))) 
 	 (s-ip (octet-vector-to-int-4  (ipv4-address.octets (ipv4-header.source ip)))) 
-	 (d-geocode (if geodb (cl-geoip:get-record geodb (ccl:ipaddr-to-dotted d-ip)) nil))
-	 (s-geocode (if geodb (cl-geoip:get-record geodb (ccl:ipaddr-to-dotted s-ip)) nil))
+	 (d-geocode (if geodb (cl-geoip:get-record geodb #+ccl (ccl:ipaddr-to-dotted d-ip) #-ccl (print-ipv4-address d-ip nil)) nil))
+	 (s-geocode (if geodb (cl-geoip:get-record geodb #+ccl (ccl:ipaddr-to-dotted s-ip ) #-ccl (print-ipv4-address s-ip nil)) nil))
 	 (timestamp (epoch-to-human-time))
 	 
 	 )
@@ -312,8 +321,8 @@
 			    (cons :timestamp timestamp)
 			    (cons :id     (dns-header.id h))
 			    (cons :section section)
-			    (cons :d_ip   (ccl:ipaddr-to-dotted d-ip))
-			    (cons :sip    (ccl:ipaddr-to-dotted s-ip))
+			    (cons :d_ip   #+ccl (ccl:ipaddr-to-dotted d-ip) #-ccl (print-ipv4-address d-ip nil))
+			    (cons :sip    #+ccl (ccl:ipaddr-to-dotted s-ip) #-ccl (print-ipv4-address s-ip nil))
 			    (cons :opcode (symbol-name (dns-header.opcode h)))
 			    (cons :rcode  (symbol-name (dns-header.rcode h)))
 			    (cons :qname  (string-downcase (dns-answer.name in)))
@@ -333,11 +342,12 @@
 					      ""
 					      )
 				  ))))) 
-	       (cl-syslog.udp:ulog-bare (subseq json-string 1  (- (length json-string)1) ))
+	       #+ignore
+           (cl-syslog.udp:ulog-bare (subseq json-string 1  (- (length json-string)1) ))
 	       
 	       )))
       ;(break)
-      (if ( dns-header.qr dns-pkt)
+      (if ( dns-header.qr h)
 	  (progn
 	    (dolist (a a-list) (do-write-points a "answer"))
 	    (dolist (n n-list) (do-write-points n "authority"))
@@ -350,8 +360,8 @@
 			  (cons :timestamp timestamp)
 			  (cons :id     (dns-header.id h))
 			  (cons :section "query")
-			  (cons :d_ip   (ccl:ipaddr-to-dotted d-ip))
-			  (cons :sip    (ccl:ipaddr-to-dotted s-ip))
+			  (cons :d_ip   #+ccl (ccl:ipaddr-to-dotted d-ip) #-ccl (print-ipv4-address d-ip nil))
+			  (cons :sip    #+ccl (ccl:ipaddr-to-dotted s-ip) #-ccl (print-ipv4-address s-ip nil))
 			  (cons :opcode (symbol-name (dns-header.opcode h)))
 			  (cons :qname (string-downcase (dns-question.qname q)))
 			  (cons :type (symbol-name (dns-question.qtype q)))
@@ -359,7 +369,8 @@
 			  (cons :d_cc   (if d-geocode (cl-geoip:record-country-code d-geocode) ""))
 			  (cons :s_cc   (if s-geocode (cl-geoip:record-country-code s-geocode) ""))
 			  ))))
-	      (cl-syslog.udp:ulog-bare (subseq json-string 1  (- (length json-string)1) )))
+	      #+ignore
+          (cl-syslog.udp:ulog-bare (subseq json-string 1  (- (length json-string)1) )))
 	    
 	    
 	    )))
@@ -368,17 +379,18 @@
     
     
     ))
+#|
 (defun dns-csv-logger (eth ip udp dns-pkt &key (geodb nil) (authority nil) (additional nil) (query t) (answer t))
   (declare (ignore eth) (ignore udp))
   (let* ((q-list (dns-packet.questions dns-pkt))
          (a-list (dns-packet.answers dns-pkt))
          (n-list (dns-packet.authorities dns-pkt))
          (d-list (dns-packet.additionals dns-pkt))
-         (h (dns-packet.header dns-pkt))
+         (h (dns-packet.header (nth-value 0 dns-pkt)))
 	 (d-ip (octet-vector-to-int-4  (ipv4-address.octets (ipv4-header.dest ip)))) 
 	 (s-ip (octet-vector-to-int-4  (ipv4-address.octets (ipv4-header.source ip)))) 
-	 (d-geocode (if geodb (cl-geoip:get-record geodb (ccl:ipaddr-to-dotted d-ip)) nil))
-	 (s-geocode (if geodb (cl-geoip:get-record geodb (ccl:ipaddr-to-dotted s-ip)) nil))
+	 (d-geocode (if geodb (cl-geoip:get-record geodb #+ccl (ccl:ipaddr-to-dotted d-ip) #-ccl (print-ipv4-address d-ip nil)) nil))
+	 (s-geocode (if geodb (cl-geoip:get-record geodb #+ccl (ccl:ipaddr-to-dotted s-ip) #-ccl (print-ipv4-address s-ip nil)) nil))
 	 (timestamp (epoch-to-human-time)))
     (flet ((do-write-points (in section) 
 	     (let ((json-string 
@@ -387,8 +399,8 @@
 			     timestamp
 			     (dns-header.id h)
 			     section
-			     (ccl:ipaddr-to-dotted d-ip)
-			     (ccl:ipaddr-to-dotted s-ip)
+			     #+ccl (ccl:ipaddr-to-dotted d-ip) #-ccl (print-ipv4-address d-ip nil)
+			     #+ccl (ccl:ipaddr-to-dotted s-ip) #-ccl (print-ipv4-address s-ip nil)
 			     (symbol-name (dns-header.opcode h))
 			    (symbol-name (dns-header.rcode h))
 			    (string-downcase (dns-answer.name in))
@@ -410,23 +422,23 @@
 					      ""
 					      ))))) 
 	       	       
-	       (cl-syslog.udp:ulog-bare json-string)
+	       #+ignore (cl-syslog.udp:ulog-bare json-string)
 	       
 	       )))
-      (if ( dns-header.qr dns-pkt)
+      (if ( dns-header.qr (nth-value 0 dns-pkt))
 	  (progn
 	    (when answer (dolist (a a-list) (do-write-points a "answer")))
 	    (when authority (dolist (n n-list) (do-write-points n "authority")))
 	    (when additional (dolist (d d-list) (do-write-points d "additional"))))
 	  (when query
 	    (dolist (q q-list) ;opcode type class query
-	      (cl-syslog.udp:ulog-bare
+	      #+ignore (cl-syslog.udp:ulog-bare
 	       (format nil "~{~A~^,~}"
 		       (list  timestamp
 			      (dns-header.id h)
 			      "query"
-			      (ccl:ipaddr-to-dotted d-ip)
-			      (ccl:ipaddr-to-dotted s-ip)
+			      #+ccl (ccl:ipaddr-to-dotted d-ip) #-ccl (print-ipv4-address d-ip nil)
+			      #+ccl (ccl:ipaddr-to-dotted s-ip) #-ccl (print-ipv4-address s-ip nil)
 			      (symbol-name (dns-header.opcode h))
 			      (string-downcase (dns-question.qname q))
 			      (symbol-name (dns-question.qtype q))
@@ -443,7 +455,7 @@
 	 )
     
     )
-  
+|#  
   
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -500,22 +512,16 @@
        (capture pcap num 
                 (lambda (sec usec caplen len buffer)
 		  (declare (ignore sec) (ignore usec) (ignore caplen) (ignore len))
-		  (handler-case 
-		      (destructuring-bind (eth ip udp payload) (decode buffer)
+		  (destructuring-bind (eth ip udp payload) (decode buffer)
 				  (let ((pkt (decode-dns-payload payload)))
 				    (dns-influx-db  eth ip udp pkt :geodb geodb :query nil)
 				    ;;;; splunk (dns-csv-logger eth ip udp pkt :geodb geodb :query nil) 
 				    ;(dns-csv-logger eth ip udp pkt :geodb geodb :query nil) 
 				    ;(dns-kv-logger eth ip udp pkt :geodb geodb) 
 				    ;(dns-json-logger eth ip udp pkt :geodb geodb) 
-				    ;(dns-logger eth ip udp pkt)
+				    (dns-logger eth ip udp pkt)
 				    ))
-		    (error (e) (progn 
-				 (format t " ~a[~a]" e buffer)
-				 (format t "ERROR ~a~%~a~%" e (hexdump buffer))
-				 ))
-		    
-		    )
+                  ;(handler-case  (error (e) (progn (format t " ~a[~a]" e buffer) (format t "ERROR ~a~%~a~%" e (hexdump buffer)))))
 		  ;(break)
 		  (when (> num 0) (setq cnt (+ cnt 1)))
                   ))

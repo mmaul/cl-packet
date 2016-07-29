@@ -6,7 +6,7 @@
 
 @export
 (defun init ()
-  (let ((args ccl::*command-line-argument-list*))
+  (let ((args (apply-argv:get-argv)))
     (if (> (length args) 2)
         (let ((intf (elt args 1))
               (filter (elt args 2))
@@ -18,5 +18,5 @@
 	)
     
     )
-  (when (not *interactive*) (ccl:quit))
+  (when (not *interactive*) #+sbcl (exit) #+ccl(ccl:quit))
   )

@@ -12,7 +12,7 @@
   "Remove non printable characters. In the case of non printable characters
 a #\period is subsituted
 "
-  (declare (fixnum c)(optimize (speed 3)(safety 0)(debug 0)))
+  (declare #-sbcl (fixnum c)(optimize (speed 3)(safety 0)(debug 0)))
   (let ((i (char-code c)))
     (if (and  (>= i 32) (< i 127)) c #\.)))
 
@@ -30,8 +30,10 @@ a #\period is subsituted
         (+ (- z r)0))
     0))
 
-(declaim (ftype (function (buffer) (SIMPLE-BASE-STRING 2)) hexdump))
-@export
+;(declaim (ftype (function (buffer) (SIMPLE-BASE-STRING 2)) hexdump))
+#|@export
+
+|#
 (defun hexdump (seq &key (w 16) (s t))
   (let* ((d (if (typep seq 'list) seq (map 'list #'identity seq)))
          (l (length d))
@@ -46,7 +48,6 @@ a #\period is subsituted
                   (make-string (remd w (- end1 cur)) 
                                :initial-element #\Space)
                   (nums-to-printable-string (subseq d cur end1))))))))
-
 (defun normalize-ipv4-ipv6 (ip dir)
   "Returns representation from ipv4 or ipv6 header
   dir selected source or dest"

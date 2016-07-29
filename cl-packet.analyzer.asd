@@ -1,3 +1,4 @@
+#+sbcl (declaim (sb-ext:muffle-conditions sb-ext:compiler-note))
 (asdf:defsystem #:cl-packet.analyzer
   :serial t
   :description "Packet analyzer functionality
@@ -17,12 +18,13 @@
                #:cl-syslog
                #:flexi-streams
                #:split-sequence
-	       #:cl-variates
+               #:cl-variates
                #:cl-redis
-	       #:cl-influxdb
+               #:cl-influxdb
                #:cl-packet
-	       #:geoip
-	       #:simple-date-time
+               #:geoip
+               #:simple-date-time
+               #:apply-argv
                )
   :components ((:module "cl-packet.analyzer"
 			:serial t
@@ -30,7 +32,7 @@
 			((:file "package")
 			 (:file "utilities")
 			 (:file "analyzer")
-			 (:file "run-analyzer")
+			 ;(:file "run-analyzer")
 			 )
                         )))
 

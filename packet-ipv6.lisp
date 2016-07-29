@@ -115,16 +115,20 @@ address. CASE may be :DOWNCASE or :UPCASE."
 
 
 @export-structure
-(defstruct (ipv6-address (:conc-name #:ipv6-address.)
+(defstruct (ipv66-address (:conc-name #:ipv6-address.)
                          (:print-function print-ipv6-address))
   (quads 0 :type  (SIMPLE-ARRAY (UNSIGNED-BYTE 16) 8)))
 
 
+#-sbcl
 @export
 (defun simple-print-ipv6-address (address stream depth)
   "Print IPv4 addresses as in ^192.168.0.1."
   (declare (ignore depth))
-  (format stream "~{~X~X~^:~}" (coerce (ipv6-address.quads address) 'list)))
+  (let ((a (ipv6-address.quads address) ))
+    (dotimes (i 7) (format stream "~X:" (aref a i)))
+    (format stream "~X" (aref a 7))
+    ))
   
 
 @export
@@ -202,7 +206,8 @@ RFC 2460                   IPv6 Specification              December 1998
                         a Routing header is present).  See [ADDRARCH]
                         and section 4.4.
 ||#
-
+"
+"
 ;;;### decoder
 
 @export
@@ -212,15 +217,15 @@ RFC 2460                   IPv6 Specification              December 1998
         (start (bit-octet *decode-position*)))
     (incf *decode-position* (* num 8))
     
-    (make-ipv6-address :quads (coerce  (subseq *decode-buffer* start (+ num start)) '(SIMPLE-ARRAY (UNSIGNED-BYTE 16) )
+    (make-ipv6-address :quads (coerce  (nth-value 0 (subseq *decode-buffer* start (+ num start))) '(SIMPLE-ARRAY (UNSIGNED-BYTE 16) )
 				       
 				       ))))
-
+#-sbcl
 @export
 (defun grab-ipv6-address1 ()
   "Grab a vector of NUM octets."
-  (make-ipv6-address :quads (make-array '(8) :element-type '(unsigned-byte 16)
-                                        :initial-contents (loop for i from 1 to 8 collect (grab-bits 16)))))
+  (nth-value 0 (make-ipv6-address :quads (nth-value 0 (make-array '(8) :element-type '(unsigned-byte 16)
+                                                                  :initial-contents (nth-value 0 (loop for i from 1 to 8 collect (nth-value 0 (grab-bits 16)))))))))
 
   
 

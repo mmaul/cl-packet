@@ -141,7 +141,7 @@
 (defun lookup-dns-qtype (c)
   (declare (optimize (speed 3)(safety 0)(debug 0)))
   (let ((s (lookup c *dns-qtype* :errorp nil)))
-    (declare (type symbol s))
+    ;(declare (type symbol s))
     (if (symbolp s)
 	s
 	(cond
@@ -204,19 +204,20 @@
 ;( ( IN A (lambda (r) (make-ipv4-address :octets r))    )
 ;( IN CNAME (FLEXI-STREAMS::STRING-TO-OCTETS )
 ;     ( IN MX)
-;     ( IN NS))
+                                        ;     ( IN NS))
+
 @export-structure
 (defstruct (dns-header (:conc-name #:dns-header.))
   (id     nil :type (or null (unsigned-byte 16)))
-  (qr   nil :type bool) ;Query or request flag
+  (qr   nil :type boolean) ;Query or request flag
   (opcode nil :type (or null (unsigned-byte 8) symbol))
-  (aa   nil :type bool)
-  (tc   nil :type bool)
-  (rd   nil :type bool)
-  (ra   nil :type bool)
-  (z    nil :type bool)
-  (ad   nil :type bool)
-  (cd   nil :type bool)
+  (aa   nil :type boolean)
+  (tc   nil :type boolean)
+  (rd   nil :type boolean)
+  (ra   nil :type boolean)
+  (z    nil :type boolean)
+  (ad   nil :type boolean)
+  (cd   nil :type boolean)
   (rcode   nil :type (or null symbol))
   (qdcount/zcount 0 :type integer) 
   (ancount/prcount 0 :type integer) 
@@ -332,7 +333,7 @@ calculation, rather than the length of the expanded name.
 (defun grab-dns-header ()
   (make-dns-header
    :id (octet-vector-to-int-2 (grab-octets 2))
-   :qr (grab-bitflag)
+   :qr (nth-value 0  (grab-bitflag))
    :opcode (lookup-opcode  (grab-bits 4))
    :aa (grab-bitflag)
    :tc (grab-bitflag)
@@ -423,7 +424,7 @@ signalled; if ERRORP is nil then the key itself is returned."
                  (domain-name (if (= 0 (elt (stroke-octets 1) 0)) (progn  (bump 1) "") (grab-domain-name)))
 		 (rec-type (handler-case 
 			       (lookup-dns-qtype (octet-vector-to-int-2 (grab-octets 2)))
-			     (error (e) (progn 
+                     (error (e) (declare ( ignorable e)) (progn 
 					;(format t "WTF: class that dosent match ~%" )
 				:UNASSIGNED
 				))
@@ -483,7 +484,10 @@ signalled; if ERRORP is nil then the key itself is returned."
   
 
   
- )
+  )
+
+(define-condition malformed-dns-entry-error (error)
+  ((text :initarg :text :reader text)))
 @export
 (defun shove-dns-answer (answer)
   (when *debug* (format *debug* "shove-dns-answer~%")) 
@@ -497,8 +501,7 @@ signalled; if ERRORP is nil then the key itself is returned."
     
     )
 
-  (define-condition malformed-dns-entry-error (error)
-    ((text :initarg :text :reader text))))
+)
 
 @export
 (defun decode-dns-raw (p)

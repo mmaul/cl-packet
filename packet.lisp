@@ -75,7 +75,7 @@
   "Decode BUFFER as a packet."
   (decode-headers buffer))
 
-@export
+
 (defun encode (packet)
   "Encode PACKET into a buffer."
   (encode-headers packet))
@@ -154,8 +154,11 @@
 @export
 (defun grab-rest ()
   "Grab the rest of the buffer into an octet vector."
-  (prog1 (subseq *decode-buffer* (bit-octet *decode-position*))
-    (setf *decode-position* (octet-bit (length *decode-buffer*)))))
+  (let ((ret (subseq *decode-buffer* (bit-octet *decode-position*))))
+    (setf *decode-position* (octet-bit (length *decode-buffer*)))
+        ret)
+  #|(prog1 (subseq *decode-buffer* (bit-octet *decode-position*))
+    (setf *decode-position* (octet-bit (length *decode-buffer*))))|#)
 
 (defmacro dpb! (value bytespec place)
   "Deposit VALUE into BYTESPEC of PLACE."
@@ -462,7 +465,7 @@ signalled; if ERRORP is nil then the key itself is returned."
   #-movitz
   (set-macro-character #\^ 'read-ipv4-address t)
 @export
-  (defun print-ipv4-address (address stream depth)
+  (defun print-ipv4-address (address stream &optional depth)
     "Print IPv4 addresses as in 192.168.0.1."
     (declare (ignore depth))
     (format stream "~{~A~^.~}" (coerce (ipv4-address.octets address) 'list)))
@@ -486,7 +489,7 @@ signalled; if ERRORP is nil then the key itself is returned."
   (source          nil :type (or null ipv4-address))
   (dest            nil :type (or null ipv4-address)))
 
-(defconstant ipv4-min-hlen 5
+(defparameter ipv4-min-hlen 5
   "The header length (in 32-bit words) of an IPv4 packet with no options.")
 
 @export
@@ -535,7 +538,7 @@ signalled; if ERRORP is nil then the key itself is returned."
       number))
 ||#
 
-(defconstant protocol-names
+(defparameter protocol-names
   '(
     (0 .  :hop-by-hops-options)
     (1 .  :icmp)
@@ -560,7 +563,7 @@ signalled; if ERRORP is nil then the key itself is returned."
       (lookup number protocol-names :errorp nil)
       number))
 
-(defconstant ipv4-no-options-hlen 5)
+(defparameter ipv4-no-options-hlen 5)
 
 @export
 (defun shove-ipv4-header (header)
