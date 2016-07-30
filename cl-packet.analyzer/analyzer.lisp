@@ -155,9 +155,9 @@
 	 (d-ip (octet-vector-to-int-4  (ipv4-address.octets (ipv4-header.dest ip)))) 
 	 (s-ip (octet-vector-to-int-4  (ipv4-address.octets (ipv4-header.source ip)))) 
          (d-geocode (if geodb (cl-geoip:get-record geodb #+ccl (ccl:ipaddr-to-dotted d-ip)
-                                                   #-ccl (print-ipv4-address d-ip nil)) nil))
+                                                   #-ccl (print-ipv4-address (ipv4-header.dest ip) nil)) nil))
          (s-geocode (if geodb (cl-geoip:get-record geodb #+ccl (ccl:ipaddr-to-dotted s-ip)
-                                                   #-ccl (print-ipv4-address s-ip nil)) nil))
+                                                   #-ccl (print-ipv4-address (ipv4-header.source ip) nil)) nil))
 	 )
     (flet ((do-write-points (name in) 
 	     
@@ -178,8 +178,8 @@
 								   (dns-answer.ttl in)
 								   (dns-answer.rdlength in)
 								   (format nil "~a" (dns-answer.rdata in))
-								   (if d-geocode (cl-geoip:record-country-code d-geocode) "")
-								   (if s-geocode (cl-geoip:record-country-code s-geocode) "")
+								   (if d-geocode (cl-geoip:record-country-code d-geocode) "-")
+								   (if s-geocode (cl-geoip:record-country-code s-geocode) "-")
 								   (if (and  geodb (eql 'PACKET.DNS.CODEC::A (dns-answer.type in))) 
 								       (let ((ans-geocode 
 									      (cl-geoip:get-record geodb 
@@ -519,7 +519,7 @@
 				    ;(dns-csv-logger eth ip udp pkt :geodb geodb :query nil) 
 				    ;(dns-kv-logger eth ip udp pkt :geodb geodb) 
 				    ;(dns-json-logger eth ip udp pkt :geodb geodb) 
-				    (dns-logger eth ip udp pkt)
+				    ;(dns-logger eth ip udp pkt)
 				    ))
                   ;(handler-case  (error (e) (progn (format t " ~a[~a]" e buffer) (format t "ERROR ~a~%~a~%" e (hexdump buffer)))))
 		  ;(break)
