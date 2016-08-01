@@ -405,7 +405,6 @@ calculation, rather than the length of the expanded name.
 If the key is not present and ERRORP is true then an error is
 signalled; if ERRORP is nil then the key itself is returned."
   (let ((entry (funcall (if reversep #'rassoc #'assoc) key alist)))
-    (print (type-of  key ))
     (cond (entry  (funcall (if reversep #'car #'cdr) entry))
           (errorp (error "Key ~S is not present in ~A." key alist))
           (t      key))))
@@ -554,7 +553,7 @@ signalled; if ERRORP is nil then the key itself is returned."
   )
 @export
 (defun decode-dns (p)
-  (print "decode-dns")
+  
   (let* ((dec (decode p))
          ;(l3 (elt dec 1))
          (l4 (elt dec 2)) )

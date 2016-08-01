@@ -1,4 +1,4 @@
-(in-package #:cl-packet.analyzer)
+(in-package #:cl-packet.analyzer.util)
 (annot:enable-annot-syntax)
 
 
@@ -62,3 +62,17 @@ a #\period is subsituted
         (ipv4-header.dest ip))))
   )
 
+(defun epoch-to-human-time (&optional epoch)
+  "
+  Syslog timestamp formatter defaults to current time.
+  Optional arg epoch as epoch seconds
+  Example format:2013-12-14T21:09:57.0Z-5
+  "
+  (let ((v (if epoch (simple-date-time:from-posix-time epoch)
+             (simple-date-time:now))))
+    (format nil "~a ~a:~a.~d EDT"
+            (simple-date-time:yyyy-mm-dd v)
+            (simple-date-time:|hh:mm| v)
+            (simple-date-time:SECOND-OF v)
+            (simple-date-time:MILLISECOND-OF v)
+            )))

@@ -31,7 +31,9 @@
                         :components 
 			((:file "package")
 			 (:file "utilities")
-			 (:file "analyzer")
+			 (:file "dns-logger")
+                         (:file "analyzer")
+                         
 			 ;(:file "run-analyzer")
 			 )
                         )))
